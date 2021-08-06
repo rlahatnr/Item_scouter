@@ -41,7 +41,7 @@ class Get_Thread(QThread):
             innerbox.insert(7, driver.find_elements_by_class_name('stat-score.larger')[0].text.split('\n')[1])
             outerbox.append(innerbox)
             global df
-            df = pd.DataFrame(outerbox)
+            df = pd.DataFrame(outerbox, columns=lists)
             window.tableWidget.setRowCount(df.shape[0])
             window.tableWidget.setColumnCount(df.shape[1])
 
@@ -57,14 +57,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.pushButton.clicked.connect(self.go_search)
         self.tableWidget.setColumnCount(8)
         global lists
-        lists = '키워드, 상품수, 한달 검색수, 6개월 매출, 6개월 판매량, 평균가격, 경쟁강도, 경쟁강도 지표'.split(',')
+        lists = '키워드, 상품수, 한달 검색수, 6개월 매출, 6개월 판매량, 평균가격, 경쟁강도, 경쟁강도 지표'.replace(' ','').split(',')
         self.tableWidget.setHorizontalHeaderLabels(lists)
         self.tableWidget.verticalHeader().setVisible(False)
         self.tableWidget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.pushButton_2.clicked.connect(self.export)
 
     def export(self):
-        df.to_excel('result.xlsx')
+        import re
+        def str_to_int(x):
+            return re.sub(r'[^0-9]', '', x)
+
+        lists = list(df)
+        df[lists[1]] = df[lists[1]].apply(str_to_int)
+        df[lists[2]] = df[lists[2]].apply(str_to_int)
+        df[lists[3]] = df[lists[3]].apply(str_to_int)
+        df[lists[4]] = df[lists[4]].apply(str_to_int)
+        df[lists[5]] = df[lists[5]].apply(str_to_int)
+        df[lists[6]] = df[lists[6]].astype(float)
+
+        df.to_excel('result.xlsx', index=False)
         msg = QMessageBox()
         msg.setWindowTitle("File saved.")
         msg.setText('result.xlsx 저장 완료.\n프로그램이 있는 폴더에서 확인하실 수 있습니다.')
