@@ -57,7 +57,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.pushButton.clicked.connect(self.go_search)
         self.tableWidget.setColumnCount(8)
         global lists
-        lists = '키워드, 상품수, 한달 검색수, 6개월 매출, 6개월 판매량, 평균가격, 경쟁강도, 경쟁강도 지표'.replace(' ','').split(',')
+        lists = '키워드, 6개월 매출, 6개월 판매량, 평균가격, 상품수, 한달 검색수, 경쟁강도, 경쟁강도 지표'.replace(' ','').split(',')
         self.tableWidget.setHorizontalHeaderLabels(lists)
         self.tableWidget.verticalHeader().setVisible(False)
         self.tableWidget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -66,7 +66,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def export(self):
         import re
         def str_to_int(x):
-            return re.sub(r'[^0-9]', '', x)
+            if '억' in x:
+                return int(str(re.sub(r'[^0-9]', '', x))+'00000000')
+            if '만원' in x:
+                return int(str(re.sub(r'[^0-9]', '', x))+'0000')
+            else:
+                return int(re.sub(r'[^0-9]', '', x))
 
         lists = list(df)
         df[lists[1]] = df[lists[1]].apply(str_to_int)
