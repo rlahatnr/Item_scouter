@@ -1,5 +1,5 @@
 from main_ui import Ui_MainWindow
-from PyQt5.QtWidgets import QTableWidgetItem, QMessageBox, QMainWindow, QTableWidget, QApplication,QHeaderView
+from PyQt5.QtWidgets import QTableWidgetItem, QMessageBox, QMainWindow, QApplication, QHeaderView
 import sys
 from PyQt5.QtCore import QThread
 from selenium import webdriver
@@ -9,6 +9,8 @@ import random
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import chromedriver_autoinstaller
+import pandas as pd
 
 
 class Get_Thread(QThread):
@@ -18,36 +20,62 @@ class Get_Thread(QThread):
     def run(self):
         keyword = window.lineEdit.text()
 
+        chromedriver_autoinstaller.install(cwd=True)
         driver = webdriver.Chrome()
-        outerbox=[]
-        for key in keyword.replace(' ','').split(','):
+        outerbox = []
+        for key in keyword.split(','):
+            key = key.strip()
             driver.get('https://itemscout.io/')
             driver.implicitly_wait(10)
             time.sleep(random.random())
-            search = driver.find_element_by_class_name('wow.fadeInUp')
+            search = driver.find_element(By.XPATH, '//input[@type="search"]')
             search.send_keys(key)
             search.send_keys(Keys.ENTER)
-            WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".keyword-title-word")))
-            row = driver.find_elements_by_class_name('search-page-summary-row')[0]
+            WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".keyword-title-word")))
+            rows = driver.find_elements(By.CLASS_NAME, 'search-page-summary-row')
 
-            import pandas as pd
-            innerbox=[]
-            for idx, val in enumerate(row.find_elements_by_class_name('count-stat')):
-                innerbox.append(val.text)
-            innerbox.insert(0, key)
-            innerbox.insert(4, driver.find_element_by_class_name('count-summary').find_elements_by_class_name('count-stat')[0].text)
-            innerbox.insert(5, driver.find_element_by_class_name('count-summary').find_elements_by_class_name('count-stat')[1].text)
-            innerbox.insert(6, driver.find_elements_by_class_name('stat-score.larger')[0].text.split('\n')[0])
-            innerbox.insert(7, driver.find_elements_by_class_name('stat-score.larger')[0].text.split('\n')[1])
-            outerbox.append(innerbox)
-            global df
-            df = pd.DataFrame(outerbox, columns=lists)
-            window.tableWidget.setRowCount(df.shape[0])
-            window.tableWidget.setColumnCount(df.shape[1])
+            box = []
+            for i in rows:
+                box.append(i.text)
+                break
 
-            for i in range(df.shape[0]):
-                for j in range(df.shape[1]):
-                    window.tableWidget.setItem(i, j, QTableWidgetItem(str(df.iat[i, j])))
+            box2 = {}
+            for i in box:
+                infos = i.split('\n')
+                box2['키워드'] = key
+                for idx, val in enumerate(infos):
+                    if idx != 0 and idx % 2 != 0:
+                        if infos[0] + ' ' + infos[idx] not in box2:
+                            box2[infos[0] + ' ' + infos[idx]] = infos[idx + 1]
+                        else:
+                            box2[infos[0] + ' ' + infos[idx]] += infos[idx + 1]
+
+            table = driver.find_element(By.CLASS_NAME, 'market-trend-score.keyword_guide_market_trend_step8')
+            for i in table.find_elements(By.CLASS_NAME, 'score-title')[:-1]:
+                if i.text.split('\n')[1] not in box2:
+                    box2[i.text.split('\n')[1]] = i.text.split('\n')[0]
+                else:
+                    box2[i.text.split('\n')[1]] += i.text.split('\n')[0]
+            time.sleep(1)
+            table = driver.find_element(By.CLASS_NAME, 'count-summary.keyword_guide_market_trend_step5')
+            for i in table.find_elements(By.CLASS_NAME, 'count-view')[:-1]:
+                if i.text.split('\n')[1] not in box2:
+                    box2[i.text.split('\n')[0]] = i.text.split('\n')[1]
+                else:
+                    box2[i.text.split('\n')[0]] += i.text.split('\n')[1]
+
+            outerbox.append(box2)
+            time.sleep(3)
+        driver.close()
+
+        global df
+        df = pd.DataFrame(outerbox)
+        window.tableWidget.setRowCount(df.shape[0])
+        window.tableWidget.setColumnCount(df.shape[1])
+
+        for i in range(df.shape[0]):
+            for j in range(df.shape[1]):
+                window.tableWidget.setItem(i, j, QTableWidgetItem(str(df.iat[i, j])))
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -55,9 +83,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super(MainWindow, self).__init__()
         self.setupUi(self)
         self.pushButton.clicked.connect(self.go_search)
-        self.tableWidget.setColumnCount(8)
+        self.tableWidget.setColumnCount(9)
         global lists
-        lists = '키워드, 6개월 매출, 6개월 판매량, 평균가격, 상품수, 한달 검색수, 경쟁강도, 경쟁강도 지표'.replace(' ','').split(',')
+        lists = ['키워드', 'Top 40 6개월 매출', 'Top 40 6개월 판매량', 'Top 40 평균 가격', '상품 종합 지표',
+       '광고 종합 지표', '컨텐츠 종합 지표', '상품수', '한 달 검색수']
         self.tableWidget.setHorizontalHeaderLabels(lists)
         self.tableWidget.verticalHeader().setVisible(False)
         self.tableWidget.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -67,19 +96,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         import re
         def str_to_int(x):
             if '억' in x:
-                return int(str(re.sub(r'[^0-9]', '', x))+'00000000')
+                return int(str(re.sub(r'[^0-9]', '', x)) + '00000000')
             if '만원' in x:
-                return int(str(re.sub(r'[^0-9]', '', x))+'0000')
+                return int(str(re.sub(r'[^0-9]', '', x)) + '0000')
             else:
                 return int(re.sub(r'[^0-9]', '', x))
 
         lists = list(df)
-        df[lists[1]] = df[lists[1]].apply(str_to_int)
-        df[lists[2]] = df[lists[2]].apply(str_to_int)
-        df[lists[3]] = df[lists[3]].apply(str_to_int)
-        df[lists[4]] = df[lists[4]].apply(str_to_int)
-        df[lists[5]] = df[lists[5]].apply(str_to_int)
-        df[lists[6]] = df[lists[6]].astype(float)
+        for i in [1,2,3,7,8]:
+            df[lists[i]] = df[lists[i]].apply(str_to_int)
 
         df.to_excel('result.xlsx', index=False)
         msg = QMessageBox()
@@ -87,9 +112,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         msg.setText('result.xlsx 저장 완료.\n프로그램이 있는 폴더에서 확인하실 수 있습니다.')
 
         x = msg.exec()
+
     def go_search(self):
         thread = Get_Thread(self)
         thread.start()
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
